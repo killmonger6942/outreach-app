@@ -11,7 +11,7 @@ We do not build software for insurers to operate. Insurers can run their MACT li
 - Granular research on each case file flags inconsistencies across the record of events, evidences, medical reports, and attached documents. A defensible strategy is built in seconds — work that would take a human weeks.
 - If potential fraud is visible through document analysis and granular research, it is flagged to the investigation/ILM team immediately.
 - Along the entire lifecycle, every legal document that needs to be submitted into court — written arguments, cross-examination prep, settlement memos, interlocutory applications — is drafted because the full case context is maintained on the system.
-- Deadlines are system-enforced, including the 30-day Section 166 deposit window that most hubs miss.
+- Deadlines are system-enforced across the entire case lifecycle.
 - Pre-claim intelligence: up to 3 months early warning on cases entering litigation, before the insurer is even served.
 
 RECIPIENT: ${contact.name} | ${contact.title} | ${contact.company}
@@ -33,9 +33,9 @@ STEP 2 — CLASSIFY into ONE profile. Build entire email around WHAT MATTERS TO 
 
 A) LEGAL LEADERSHIP (CLO, GC, Head Legal, VP Legal, Compliance Head)
 What they own: The entire MACT portfolio across hundreds of tribunals. Answerable for quantum exposure, compliance, advocate performance, and IRDAI reporting. Problems reach them as escalations — by then it's too late.
-What matters to them: Can they see every case, every tribunal, every advocate's performance in one place? Can they answer "what is our total quantum exposure right now" without calling 15 people? Do they know which cases are at risk of adverse awards before they land?
-Frame: Nyayanidhi gives them a live portfolio — every case's stage, quantum, advocate discipline, compliance status. They stop firefighting escalations and start governing the function. Not a vendor relationship — an infrastructure partner through which they can run their litigation.
-Tone: Strategic, governance. Speak about portfolio control, not technology.
+What matters to them: Legal intelligence that actually builds defense. Can they see every case, every tribunal, every advocate's performance in one place? Can they answer "what is our total quantum exposure right now" without calling 15 people? Do they know which cases are at risk of adverse awards before they land? Most critically — do they have a system that understands real-world legal nuances, frameworks, and precedent to comprehensively build a defense strategy for any case in their portfolio, and draft any legal document — written arguments, cross-examination prep, settlement memos, interlocutory applications — within minutes, not weeks?
+Frame: Nyayanidhi is the only system built on real-world legal nuances and frameworks that comprehensively builds defense strategies and drafts any legal document for their cases within minutes. It gives them a live portfolio — every case's stage, quantum, advocate discipline, compliance status. They stop firefighting escalations and start governing the function with legal intelligence that covers the entire portfolio. Not a vendor relationship — an infrastructure partner through which they can run their litigation.
+Tone: Strategic, governance. Speak about portfolio-wide legal intelligence and defense capability, not technology.
 
 B) MOTOR TP / LITIGATION OPS (VP Motor TP, AVP, Hub Manager, TP Officer, Branch Legal Officer, Litigation Head)
 What they own: Day-to-day MACT case execution — intake, advocate coordination, hearing tracking, deposit compliance. Currently running on Excel registers, email threads, and memory.
@@ -101,7 +101,7 @@ Frame: Present Nyayanidhi as the litigation operating system that handles the fu
   • Granular case research — inconsistencies flagged across documents, medical records, and evidence; defensible strategies built in seconds
   • Fraud detection — document-level analysis surfaces potential fraud to investigation teams immediately
   • Legal document generation — written arguments, cross-examination prep, settlement memos drafted with full case context
-  • Deadline enforcement — system-enforced compliance including 30-day Section 166 deposit windows
+  • Deadline enforcement — system-enforced compliance across the entire case lifecycle
   • Pre-claim intelligence — up to 3 months early warning before the insurer is even served
 This is not software the insurer needs to operate. Insurers can run their entire MACT litigation through Nyayanidhi's infrastructure — absorbing volume, enforcing discipline, and delivering outcomes.
 Tone: Executive, comprehensive. Paint the full picture. Show the scale of the problem (15-20 lakh cases, 700+ tribunals) and how Nyayanidhi structurally solves it. Keep it high-level but concrete — outcomes, not features.

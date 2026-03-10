@@ -37,16 +37,22 @@ async function apiLoadContacts() {
     name: c.Full_Name || [c.First_Name, c.Last_Name].filter(Boolean).join(" ") || "",
     title: c.Title || c.Department || "",
     company: (typeof c.Account_Name === "object" ? c.Account_Name?.name : c.Account_Name) || "Unassigned",
+    accountId: (typeof c.Account_Name === "object" ? c.Account_Name?.id : null) || null,
     email: c.Email || "",
     notes: [c.Outreach_notes, c.Outreach_Notes, c.Description].filter(Boolean).join(" — "),
     linkedin: c.Linkedin || c.LinkedIn || "",
     category: c._category || "",
-    status: "pending", crmSyncStatus: null, generatedEmail: null, syncLog: [],
+    // Restore status from CRM fields
+    status: c.Outreach_Status ? c.Outreach_Status.toLowerCase() : "pending",
+    crmSyncStatus: c.Outreach_Status ? "synced" : null,
+    generatedEmail: c.Outreach_Subject ? { subject: c.Outreach_Subject, body: c.Outreach_Body || "" } : null,
+    skipReason: c.Outreach_Skip_Status || null,
+    syncLog: [],
   }));
 }
 
-async function apiCRMUpdate(zohoId, status, lastOutreachDate, followUpDue) {
-  const res = await fetch("http://localhost:3001/api/crm-update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ zohoId, status, lastOutreachDate, followUpDue }) });
+async function apiCRMUpdate(zohoId, status, lastOutreachDate, followUpDue, { outreachSubject, outreachBody, skipReason } = {}) {
+  const res = await fetch("http://localhost:3001/api/crm-update", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ zohoId, status, lastOutreachDate, followUpDue, outreachSubject, outreachBody, skipReason }) });
   if (!res.ok) throw new Error("CRM update failed");
   return res.json();
 }
@@ -117,6 +123,8 @@ export default function App() {
   const [isEditing, setIsEditing]       = useState(false);
   const [toast, setToast]               = useState(null);
   const [showSync, setShowSync]         = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [noteDraft, setNoteDraft]       = useState("");
   const [isDragOver, setIsDragOver]     = useState(null);
   const [schedulePopover, setSchedulePopover] = useState(null); // contactId or null
   const [scheduleDate, setScheduleDate] = useState("");
@@ -143,6 +151,11 @@ export default function App() {
         loaded = SAMPLE_CONTACTS;
       }
       if (!loaded || loaded.length === 0) loaded = SAMPLE_CONTACTS;
+      // Restore persisted statuses from localStorage
+      try {
+        const saved = JSON.parse(localStorage.getItem("outreach-contact-state") || "{}");
+        loaded = loaded.map(c => saved[c.id] ? { ...c, ...saved[c.id] } : c);
+      } catch {}
       setAllContacts(loaded);
       // Select first contact in the active category
       const catContacts = loaded.filter(c => c.category === activeCategory);
@@ -181,6 +194,19 @@ export default function App() {
 
   const showToast = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),3200); };
   const updateContact = (id, patch) => setAllContacts(p => p.map(c => c.id===id?{...c,...patch}:c));
+
+  // ── Persist contact statuses to localStorage ─────────────────────────────
+  const STORAGE_KEY = "outreach-contact-state";
+  const saveContactState = (contacts) => {
+    const state = {};
+    contacts.forEach(c => {
+      if (c.status !== "pending") {
+        state[c.id] = { status: c.status, generatedEmail: c.generatedEmail, skipReason: c.skipReason, scheduledAt: c.scheduledAt };
+      }
+    });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+  };
+  useEffect(() => { if (allContacts.length > 0) saveContactState(allContacts); }, [allContacts]);
   const addSyncLog = (id, entry) => setAllContacts(p => p.map(c => c.id===id?{...c,syncLog:[entry,...(c.syncLog||[])]}:c));
 
   // ── Deck ──────────────────────────────────────────────────────────────────
@@ -195,25 +221,88 @@ export default function App() {
   const deckColor  = (t) => t?.includes("pdf")?"#C45A5A":t?.includes("presentation")||t?.includes("powerpoint")?"#C4A35A":"#5B9BD5";
 
   // ── Dossier ────────────────────────────────────────────────────────────────
+  const getAccountIdForCompany = (company) => {
+    const c = allContacts.find(x => x.company === company && x.accountId);
+    return c?.accountId || null;
+  };
+
   const handleDossierFile = (company, file) => {
     if (!file) return;
     if (!file.name.match(/\.(txt|md|pdf|doc|docx)$/i)) { showToast("Only TXT, MD, PDF, DOC, DOCX supported.", "error"); return; }
     if (file.size > 10*1024*1024) { showToast("Max 10 MB.", "error"); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCompanyDossiers(p => ({...p, [company]: { name: file.name, size: file.size, type: file.type, content: reader.result }}));
-      showToast(`Dossier attached for ${company.split(" ")[0]}`);
+
+    // Read as text for prompt usage
+    const textReader = new FileReader();
+    textReader.onload = () => {
+      const textContent = textReader.result;
+      // Read as base64 for CRM upload
+      const b64Reader = new FileReader();
+      b64Reader.onload = async () => {
+        const accountId = getAccountIdForCompany(company);
+        if (accountId) {
+          showToast(`Uploading dossier to CRM for ${company.split(" ")[0]}...`);
+          try {
+            const r = await fetch("http://localhost:3001/api/crm-account-dossier", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accountId, fileName: file.name, fileContent: b64Reader.result }),
+            });
+            const data = await r.json();
+            console.log("CRM dossier response:", data);
+            if (data?.verified === false) {
+              console.error("CRM dossier: file uploaded but field not linked.", data);
+              setCompanyDossiers(p => ({...p, [company]: { name: file.name, size: file.size, type: file.type, content: textContent }}));
+              showToast("Dossier attached locally but CRM field not updated — check console", "error");
+              return;
+            }
+            if (data?.error) {
+              console.error("CRM dossier upload failed:", data);
+              showToast("Dossier failed to upload to CRM", "error");
+              return;
+            }
+            setCompanyDossiers(p => ({...p, [company]: { name: file.name, size: file.size, type: file.type, content: textContent }}));
+            showToast(`Dossier uploaded to CRM for ${company.split(" ")[0]}`, "success");
+          } catch (err) {
+            console.error("CRM dossier upload error:", err);
+            showToast("Failed to upload dossier to CRM", "error");
+          }
+        } else {
+          // No CRM account linked, just store locally
+          setCompanyDossiers(p => ({...p, [company]: { name: file.name, size: file.size, type: file.type, content: textContent }}));
+          showToast(`Dossier attached locally for ${company.split(" ")[0]} (no CRM account linked)`, "error");
+        }
+      };
+      b64Reader.readAsDataURL(file);
     };
-    reader.onerror = () => showToast("Failed to read file.", "error");
-    reader.readAsText(file);
+    textReader.onerror = () => showToast("Failed to read file.", "error");
+    textReader.readAsText(file);
+  };
+
+  const removeDossier = async (company) => {
+    // Remove from UI immediately
+    setCompanyDossiers(p => { const n = {...p}; delete n[company]; return n; });
+    // Also clear from CRM
+    const accountId = getAccountIdForCompany(company);
+    if (accountId) {
+      try {
+        await fetch("http://localhost:3001/api/crm-account-dossier", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId, fileContent: null }),
+        });
+        showToast("Dossier removed from CRM", "success");
+      } catch (err) {
+        showToast("Dossier removed locally, CRM clear failed", "error");
+      }
+    } else {
+      showToast("Dossier removed.");
+    }
   };
 
   // ── CRM sync ──────────────────────────────────────────────────────────────
-  const syncToCRM = async (contact, status) => {
+  const syncToCRM = async (contact, status, emailData = {}) => {
     updateContact(contact.id, { crmSyncStatus:"syncing" });
     const entry = { time:new Date().toLocaleTimeString(), status, field:status };
     try {
-      await apiCRMUpdate(contact.zohoId, status, today(), followUpDate());
+      await apiCRMUpdate(contact.zohoId, status, today(), followUpDate(), emailData);
       updateContact(contact.id, { crmSyncStatus:"synced" });
       addSyncLog(contact.id, { ...entry, result:"success" });
       showToast(IS_DEMO ? `[Demo] CRM would update → ${status}` : `CRM updated → ${status}`);
@@ -274,8 +363,10 @@ export default function App() {
         throw new Error("Could not parse email JSON from response");
       }
       if (parsed.skip) {
-        updateContact(contact.id, { status:"skipped", skipReason: parsed.reason || "Not relevant for our services" });
-        showToast(`Skipped ${contact.name}: ${parsed.reason || "not relevant"}`, "error");
+        const reason = parsed.reason || "Not relevant for our services";
+        updateContact(contact.id, { status:"skipped", skipReason: reason });
+        showToast(`Skipped ${contact.name}: ${reason}`, "error");
+        syncToCRM(contact, "Skipped", { skipReason: reason });
         return;
       }
       updateContact(contact.id, { status:"ready", generatedEmail:parsed });
@@ -287,12 +378,29 @@ export default function App() {
     }
   };
 
+  // ── Save notes to CRM ────────────────────────────────────────────────────
+  const saveNotes = async () => {
+    if (!current) return;
+    const trimmed = noteDraft.trim();
+    updateContact(current.id, { notes: trimmed });
+    setEditingNotes(false);
+    try {
+      await fetch("http://localhost:3001/api/crm-notes", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zohoId: current.zohoId, notes: trimmed }),
+      });
+      showToast(`Notes saved for ${current.name}`, "success");
+    } catch (err) {
+      showToast(`Failed to save notes: ${err.message}`, "error");
+    }
+  };
+
   // ── Approve ───────────────────────────────────────────────────────────────
   const handleApprove = async () => {
     const emailData = { subject:editSubject, body:editBody };
     updateContact(current.id, { status:"approved", generatedEmail:emailData });
     setIsEditing(false);
-    await syncToCRM(current, "Approved");
+    await syncToCRM(current, "Approved", { outreachSubject: editSubject, outreachBody: editBody });
   };
 
   // ── Send ──────────────────────────────────────────────────────────────────
@@ -303,7 +411,7 @@ export default function App() {
       await apiSendEmail(current, editSubject, editBody, companyDecks[current.company] || null);
       updateContact(current.id, { status:"sent" });
       showToast(`Sent to ${current.email}`);
-      await syncToCRM(current, "Sent");
+      await syncToCRM(current, "Sent", { outreachSubject: editSubject, outreachBody: editBody });
     } catch (err) {
       updateContact(current.id, { status:"approved" });
       showToast(`Send failed: ${err.message}`, "error");
@@ -475,6 +583,18 @@ export default function App() {
             disabled={loading||stats.pending===0}>
             ⚡ Generate All
           </button>
+          <button style={{...s.btnGold,background:"#2A1F0A",borderColor:"#5A4A2A"}}
+            onClick={async () => {
+              const generated = contacts.filter(c=>["approved","skipped"].includes(c.status));
+              if (generated.length===0) return;
+              for (const c of generated) {
+                updateContact(c.id, {status:"pending",generatedEmail:null,skipReason:null,crmSyncStatus:null});
+              }
+              for (const c of generated) await generateEmail({...c,status:"pending",generatedEmail:null,skipReason:null});
+            }}
+            disabled={loading||(stats.approved+(stats.skipped||0))===0}>
+            ↻ Regenerate All
+          </button>
           <button style={s.btnBlue}
             onClick={bulkSend}
             disabled={stats.approved===0}>
@@ -520,6 +640,7 @@ export default function App() {
                 setExpandedCos({});
                 setShowSync(false);
                 setIsEditing(false);
+                setEditingNotes(false);
                 const catContacts = allContacts.filter(c => c.category === cat.key);
                 if (catContacts.length > 0) {
                   setExpandedCos({ [catContacts[0].company]: true });
@@ -629,7 +750,7 @@ export default function App() {
                           <div style={s.deckActions}>
                             <span style={s.deckSize}>{fmt(companyDossiers[company].size)}</span>
                             <button style={s.btnDeckReplace} onClick={e=>{e.stopPropagation();dossierRefs.current[company]?.click();}}>Replace</button>
-                            <button style={s.btnDeckRemove} onClick={e=>{e.stopPropagation();setCompanyDossiers(p=>{const n={...p};delete n[company];return n;});showToast("Dossier removed.");}}>✕</button>
+                            <button style={s.btnDeckRemove} onClick={e=>{e.stopPropagation();removeDossier(company);}}>✕</button>
                           </div>
                         </div>
                       )}
@@ -642,7 +763,7 @@ export default function App() {
                       const active = c.id === selectedId;
                       return (
                         <div key={c.id} style={{...s.contactTab,...(active?s.contactTabOn:{})}}
-                          onClick={()=>setSelectedId(c.id)}>
+                          onClick={()=>{setSelectedId(c.id);setEditingNotes(false);}}>
                           <div style={s.tabLeft}>
                             <div style={{...s.tabBar,background:active?(CATEGORIES.find(c=>c.key===activeCategory)?.color||"#C4A35A"):"transparent"}}/>
                             <div style={{flex:1,minWidth:0}}>
@@ -695,6 +816,7 @@ export default function App() {
                 </div>
                 <div style={s.actions}>
                   {current.status==="ready" && <>
+                    <button style={s.btnGhost} onClick={()=>{updateContact(current.id,{status:"pending",generatedEmail:null,skipReason:null,crmSyncStatus:null});generateEmail({...current,status:"pending",generatedEmail:null,skipReason:null});}}>↻ Regenerate</button>
                     <button style={s.btnGhost} onClick={()=>setIsEditing(!isEditing)}>{isEditing?"Cancel":"✎ Edit"}</button>
                     <button style={s.btnGreen} onClick={handleApprove}>✓ Approve</button>
                   </>}
@@ -732,16 +854,37 @@ export default function App() {
                   {current.status==="sending" && <button style={{...s.btnBlue,opacity:.5}} disabled>Sending…</button>}
                   {current.status==="pending" && <button style={s.btnGold} onClick={()=>generateEmail(current)}>⚡ Generate</button>}
                   {current.status==="skipped" && <button style={s.btnGold} onClick={()=>{updateContact(current.id,{status:"pending",skipReason:null});generateEmail(current);}}>⚡ Retry</button>}
+                  {["approved","skipped"].includes(current.status) && (
+                    <button style={s.btnGhost} onClick={()=>{updateContact(current.id,{status:"pending",generatedEmail:null,skipReason:null,crmSyncStatus:null});generateEmail({...current,status:"pending",generatedEmail:null,skipReason:null});}}>↻ Regenerate</button>
+                  )}
                   {["sent","approved","scheduled"].includes(current.status) && (
                     <button style={{...s.btnGhost,...(showSync?{borderColor:"#1E3A2A",color:"#4A9E6B"}:{})}} onClick={()=>setShowSync(!showSync)}>⇄ CRM</button>
                   )}
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Notes — editable */}
               <div style={s.strip}>
                 <span style={s.stripLbl}>NOTES </span>
-                {current.notes || <span style={{color:"#999",fontStyle:"italic"}}>No notes in CRM</span>}
+                {editingNotes ? (
+                  <span style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+                    <input
+                      value={noteDraft}
+                      onChange={e=>setNoteDraft(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==="Enter") saveNotes(); if(e.key==="Escape"){ setEditingNotes(false); setNoteDraft(current.notes||""); } }}
+                      autoFocus
+                      style={{flex:1,background:"#1A1A1A",border:"1px solid #333",color:"#EEE",borderRadius:4,padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}
+                      placeholder="Add notes to help personalise the email..."
+                    />
+                    <button onClick={saveNotes} style={{background:"#1E3A2A",color:"#4A9E6B",border:"none",borderRadius:4,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>Save</button>
+                    <button onClick={()=>{setEditingNotes(false);setNoteDraft(current.notes||"");}} style={{background:"none",color:"#888",border:"1px solid #333",borderRadius:4,padding:"4px 8px",fontSize:11,cursor:"pointer"}}>✕</button>
+                  </span>
+                ) : (
+                  <span style={{cursor:"pointer",flex:1}} onClick={()=>{setNoteDraft(current.notes||"");setEditingNotes(true);}}>
+                    {current.notes || <span style={{color:"#999",fontStyle:"italic"}}>No notes in CRM — click to add</span>}
+                    <span style={{color:"#666",fontSize:10,marginLeft:6}}>✎</span>
+                  </span>
+                )}
               </div>
 
               {/* Deck status */}
@@ -860,7 +1003,7 @@ export default function App() {
                     <div style={s.syncDivider}/>
                     <div style={s.syncKey}>FIELDS WRITTEN TO CRM</div>
                     <div style={s.fieldList}>
-                      {["Outreach_Status","Last_Outreach_Date","Follow_Up_Due"].map(f=>(
+                      {["Outreach_Status","Outreach_Subject","Outreach_Body","Outreach_Skip_Status","Last_Outreach_Date","Follow_Up_Due"].map(f=>(
                         <div key={f} style={s.fieldItem}><span style={{color:"#999",marginRight:5}}>›</span>{f}</div>
                       ))}
                     </div>

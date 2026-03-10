@@ -86,19 +86,167 @@ app.get("/api/contacts", async (req, res) => {
 
 // ── Zoho CRM: Update contact ────────────────────────────────────────────────
 app.post("/api/crm-update", async (req, res) => {
-  const { zohoId, status, lastOutreachDate, followUpDue } = req.body;
+  const { zohoId, status, lastOutreachDate, followUpDue, outreachSubject, outreachBody, skipReason } = req.body;
+  try {
+    const token = await getAccessToken();
+    const domain = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in";
+    const updateFields = {
+      Outreach_Status: status,
+      Last_Outreach_Date: lastOutreachDate ? new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T") + "+05:30" : null,
+      Follow_Up_Due: followUpDue,
+    };
+    if (outreachSubject !== undefined) updateFields.Outreach_Subject = outreachSubject || "";
+    if (outreachBody !== undefined) updateFields.Outreach_Body = outreachBody || "";
+    if (skipReason !== undefined) updateFields.Outreach_Skip_Status = skipReason || "";
+    const crmRes = await fetch(`${domain}/crm/v2/Contacts/${zohoId}`, {
+      method: "PUT",
+      headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [updateFields] }),
+    });
+    const data = await crmRes.json();
+    res.json(data);
+  } catch (err) {
+    console.error("CRM update error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Zoho CRM: Update contact notes ──────────────────────────────────────────
+app.post("/api/crm-notes", async (req, res) => {
+  const { zohoId, notes } = req.body;
+  if (!zohoId) return res.status(400).json({ error: "zohoId required" });
   try {
     const token = await getAccessToken();
     const domain = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in";
     const crmRes = await fetch(`${domain}/crm/v2/Contacts/${zohoId}`, {
       method: "PUT",
       headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [{ Outreach_Status: status, Last_Outreach_Date: lastOutreachDate ? new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T") + "+05:30" : null, Follow_Up_Due: followUpDue }] }),
+      body: JSON.stringify({ data: [{ Description: notes || "" }] }),
     });
     const data = await crmRes.json();
     res.json(data);
   } catch (err) {
-    console.error("CRM update error:", err.message);
+    console.error("CRM notes update error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Debug: Fetch Dossier field metadata ─────────────────────────────────────
+app.get("/api/debug-dossier-field", async (req, res) => {
+  try {
+    const token = await getAccessToken();
+    const domain = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in";
+    const fieldsRes = await fetch(`${domain}/crm/v2/settings/fields?module=Accounts`, {
+      method: "GET",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    const fieldsData = await fieldsRes.json();
+    // Find any field with "dossier" in name/label, or any file-related field
+    // Scope issue with settings API — try fetching the record directly with all fields
+    const recordRes = await fetch(`${domain}/crm/v2/Accounts/1210779000000649658`, {
+      method: "GET",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    const recordData = await recordRes.json();
+    const record = recordData?.data?.[0] || {};
+    // Find all keys that contain "dossier" (case-insensitive)
+    const dossierKeys = Object.keys(record).filter(k => k.toLowerCase().includes("dossier"));
+    // Also find all keys with null file-like values
+    const allKeys = Object.keys(record);
+    console.log("Dossier-related keys:", dossierKeys);
+    console.log("Dossier key values:", dossierKeys.map(k => ({ key: k, value: record[k] })));
+    console.log("All record keys:", allKeys);
+    res.json({ dossierKeys, values: dossierKeys.map(k => ({ key: k, value: record[k] })), allKeys });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: delete existing dossier file from an Account using _delete flag
+async function clearDossier(domain, token, accountId) {
+  // Fetch existing file to get its record ID
+  const getRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}?fields=Dossier`, {
+    method: "GET",
+    headers: { Authorization: `Zoho-oauthtoken ${token}` },
+  });
+  const getData = await getRes.json();
+  const existing = getData?.data?.[0]?.Dossier;
+  if (existing && existing.length > 0) {
+    const deletePayload = existing.map(f => ({ id: f.id, _delete: null }));
+    const delRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}`, {
+      method: "PUT",
+      headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [{ Dossier: deletePayload }] }),
+    });
+    const delData = await delRes.json();
+    console.log("Dossier deleted for account:", accountId, JSON.stringify(delData));
+    return delData;
+  }
+  console.log("No existing dossier to clear for:", accountId);
+  return { status: "no_file" };
+}
+
+// ── Zoho CRM: Upload dossier file to Account ───────────────────────────────
+app.post("/api/crm-account-dossier", async (req, res) => {
+  const { accountId, fileName, fileContent } = req.body;
+  if (!accountId) return res.status(400).json({ error: "accountId required" });
+  try {
+    const token = await getAccessToken();
+    const domain = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in";
+
+    if (!fileContent) {
+      await clearDossier(domain, token, accountId);
+      return res.json({ status: "cleared" });
+    }
+
+    const base64Data = fileContent.includes(",") ? fileContent.split(",")[1] : fileContent;
+    const buffer = Buffer.from(base64Data, "base64");
+    const ext = fileName.split(".").pop().toLowerCase();
+    const mimeMap = { txt:"text/plain", md:"text/markdown", pdf:"application/pdf", doc:"application/msword", docx:"application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
+    const mime = mimeMap[ext] || "application/octet-stream";
+
+    // Step 1: Clear existing dossier first (field only allows 1 file)
+    await clearDossier(domain, token, accountId);
+
+    // Step 2: Upload file to Zoho File System (/crm/v2/files)
+    const formData = new FormData();
+    formData.append("file", new Blob([buffer], { type: mime }), fileName);
+
+    const fileUploadRes = await fetch(`${domain}/crm/v2/files`, {
+      method: "POST",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+      body: formData,
+    });
+    const fileUploadData = await fileUploadRes.json();
+    console.log("Step 2 - File upload to ZFS:", JSON.stringify(fileUploadData));
+
+    const fileId = fileUploadData?.data?.[0]?.details?.id;
+    if (!fileId) {
+      console.error("No file ID returned");
+      return res.status(500).json({ error: "File upload failed", details: fileUploadData });
+    }
+    console.log("File ID:", fileId);
+
+    // Step 3: Link file to Dossier field using v7 API
+    const updateRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}`, {
+      method: "PUT",
+      headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [{ Dossier: [{ File_Id__s: fileId }] }] }),
+    });
+    const updateData = await updateRes.json();
+    console.log("Step 3 - v7 record update:", JSON.stringify(updateData));
+
+    // Step 4: Verify
+    const verifyRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}?fields=Dossier`, {
+      method: "GET",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    const verifyData = await verifyRes.json();
+    const dossierValue = verifyData?.data?.[0]?.Dossier;
+    console.log("Verification - Dossier:", JSON.stringify(dossierValue));
+    res.json({ verified: !!dossierValue, data: updateData });
+  } catch (err) {
+    console.error("Account dossier upload error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -328,10 +476,21 @@ Extract: career history, LinkedIn headline, recent activity/posts, public views,
 If their title has acronyms, decode them from research — do NOT guess.
 
 CRITICAL — DETERMINE ACTUAL DOMAIN:
-- Do NOT assume what a title means. "Head ICLM" could mean fraud prevention, not litigation. "Head SIU" means investigations, not legal. Decode every acronym from research.
+- Do NOT assume what a title means. Decode every acronym from research — do NOT guess.
+- "ICLM" often means Integrated Claims Lifecycle Management — could be health, motor, or general. You MUST determine which line of business from LinkedIn/research.
+- "Head SIU" means investigations, not legal. "Head ICLM" could mean health claims, not motor TP. Verify from research.
 - Read their LinkedIn headline keywords carefully — these reveal what they ACTUALLY do (e.g. "Health Claims | Fraud Risk Mitigation" = health insurance fraud, NOT Motor TP litigation).
-- Determine if this person works in: health insurance, life insurance, motor OD only, IT, HR, marketing, distribution/agency, reinsurance, investment/treasury, customer service, or product development (non-motor). If so, flag them clearly as NOT RELEVANT for motor TP litigation.
+- If their LinkedIn headline, summary, or career history mentions "health", "life", "group health", "mediclaim", "TPA", "wellness" — they are NOT relevant.
 - State their actual domain explicitly in your research output (e.g. "DOMAIN: Health insurance claims" or "DOMAIN: Motor TP litigation ops").
+
+C-SUITE EXCEPTION — IMPORTANT:
+- If the person is C-suite or top management (CEO, MD, CTO, CHRO, COO, CFO, Chief Underwriting Officer, Chief - UW/Claims/Reinsurance, or any "Chief" / "Managing Director" title), they are ALWAYS relevant. Do NOT skip them even if their personal domain is IT, HR, operations, etc.
+- For C-suite who are NOT directly in motor TP/legal/claims, generate a GENERAL email (the email prompt has a profile for this). They oversee the entire company and motor TP litigation is a major cost center that matters to all top management.
+- Only skip C-suite if they are at a company that has ZERO motor insurance business (e.g., pure life insurer, pure health insurer).
+
+NON-C-SUITE FILTERING:
+- For mid-level roles (VP, AVP, Head, Manager, etc.) who work in: health insurance, life insurance, motor OD only, IT infrastructure, HR, marketing, distribution/agency, reinsurance treaty, investment/treasury, customer service, or product development (non-motor) — flag as NOT RELEVANT.
+- If you CANNOT determine their exact line of business from research, err on the side of flagging as NOT RELEVANT rather than generating an email.
 
 IMPORTANT: Keep research focused. Do NOT spend more than 3 tool-use turns on research.
 

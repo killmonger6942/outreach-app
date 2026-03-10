@@ -4,8 +4,8 @@ export default function insurancePrompt(contact, hasDeck, dossier) {
 ABOUT NYAYANIDHI:
 Litigation operating system for MACT (Motor Accident Claims Tribunal) cases. 15–20 lakh MACT cases pending across 700–1,000+ tribunals in India. Every motor insurer is a potential customer.
 
-We do not build software for insurers to operate. We run the litigation function itself. What this means in practice:
-- A case is digested and drafted within seconds of intake.
+We do not build software for insurers to operate. Insurers can run their MACT litigation using our infrastructure. What this means in practice:
+- On claims intake, the case is digested and a defense strategy is drafted within seconds.
 - Case files are assigned to vetted network advocates through a click of a button.
 - The entire case lifecycle — claim petition → hearings → orders → award → deposit → execution → closure — is managed through the operating system. Complete visibility into how cases are run, irrespective of jurisdiction, village, or district.
 - Granular research on each case file flags inconsistencies across the record of events, evidences, medical reports, and attached documents. A defensible strategy is built in seconds — work that would take a human weeks.
@@ -34,13 +34,13 @@ STEP 2 — CLASSIFY into ONE profile. Build entire email around WHAT MATTERS TO 
 A) LEGAL LEADERSHIP (CLO, GC, Head Legal, VP Legal, Compliance Head)
 What they own: The entire MACT portfolio across hundreds of tribunals. Answerable for quantum exposure, compliance, advocate performance, and IRDAI reporting. Problems reach them as escalations — by then it's too late.
 What matters to them: Can they see every case, every tribunal, every advocate's performance in one place? Can they answer "what is our total quantum exposure right now" without calling 15 people? Do they know which cases are at risk of adverse awards before they land?
-Frame: Nyayanidhi gives them a live portfolio — every case's stage, quantum, advocate discipline, compliance status. They stop firefighting escalations and start governing the function. Not a vendor relationship — a delivery partner that runs the operation.
+Frame: Nyayanidhi gives them a live portfolio — every case's stage, quantum, advocate discipline, compliance status. They stop firefighting escalations and start governing the function. Not a vendor relationship — an infrastructure partner through which they can run their litigation.
 Tone: Strategic, governance. Speak about portfolio control, not technology.
 
 B) MOTOR TP / LITIGATION OPS (VP Motor TP, AVP, Hub Manager, TP Officer, Branch Legal Officer, Litigation Head)
-What they own: Day-to-day MACT case execution — intake, advocate coordination, hearing tracking, deposit compliance. Currently running on Excel registers, WhatsApp groups, and memory.
-What matters to them: Cases digested and drafted in seconds instead of days. Advocate assignment through a click, not phone calls. Knowing what happened at every hearing without chasing advocates. Deadlines that the system enforces, not ones they have to remember. One source of truth per case instead of scattered WhatsApp threads.
-Frame: Nyayanidhi replaces the coordination chaos. Every case has a live spine from petition to closure. They manage by exception, not by chasing. The operating system runs the litigation — they govern it.
+What they own: Day-to-day MACT case execution — intake, advocate coordination, hearing tracking, deposit compliance. Currently running on Excel registers, email threads, and memory.
+What matters to them: On claims intake, cases digested and defense strategies drafted in seconds instead of days. Advocate assignment through a click, not phone calls. Knowing what happened at every hearing without chasing advocates. Deadlines that the system enforces, not ones they have to remember. One source of truth per case instead of scattered email chains.
+Frame: You can run your MACT litigation using Nyayanidhi's infrastructure. Every case has a live spine from petition to closure. They manage by exception, not by chasing.
 Tone: Operational, direct. Cases, hearings, advocates, deadlines. Speak their daily language.
 
 C) CLAIMS LEADERSHIP (Head Claims, VP Claims, CCO, Claims Strategy, Head Motor Claims)
@@ -51,7 +51,7 @@ Tone: Closure rates, reserve pressure, claims outcomes. Not court procedure.
 
 D) CFO / FINANCE / C-SUITE (CFO, MD, CEO)
 What they own: The P&L. Motor TP combined ratio often exceeds 100%. Litigation inefficiency inflates costs across every line — unnecessary adjournments, missed hearings, manual coordination overhead, interest penalties from missed deposit windows, reserve shocks from unprovided awards.
-What matters to them: How does this move the combined ratio? Where does cost leave the system? Deadline enforcement eliminates interest penalties. Coordination overhead drops because the system runs the function. Structured case data means reserves are estimated on facts, not guesswork. Faster resolution compresses the tail.
+What matters to them: How does this move the combined ratio? Where does cost leave the system? Deadline enforcement eliminates interest penalties. Coordination overhead drops because the insurer runs litigation through Nyayanidhi's infrastructure. Structured case data means reserves are estimated on facts, not guesswork. Faster resolution compresses the tail.
 Frame: Every Nyayanidhi capability maps to a P&L line. This is not a technology investment — it is an operational cost reduction that shows up in the combined ratio.
 Tone: Financial materiality only. Combined ratio, reserves, cost structure. No operational detail.
 
@@ -80,7 +80,7 @@ Frame: Nyayanidhi gives the investigation team a head start. Pre-claim intellige
 Tone: Early warning, speed, defense strength. NOT tech jargon, NOT "AI/ML," NOT "scraper" or "algorithm."
 
 I) STRATEGY & INNOVATION (Head Strategy, VP Innovation, CSO, Head Claims Transformation)
-What they own: Transformation roadmap. They've digitized FNOL, survey, fraud detection — but litigation (the biggest motor TP cost center, 15-20 lakh pending cases) remains completely untouched. Every vendor builds trackers. Nobody runs the function.
+What they own: Transformation roadmap. They've digitized FNOL, survey, fraud detection — but litigation (the biggest motor TP cost center, 15-20 lakh pending cases) remains completely untouched. Every vendor builds trackers. Nobody provides the infrastructure to actually run it.
 What matters to them: The last undigitized cost center now has an operating system. Not software they need to operate — a managed system that absorbs volume, enforces discipline, and delivers outcomes. This is the missing piece in claims transformation.
 Frame: Nyayanidhi is the litigation layer that completes the transformation stack. Everything upstream has been digitized. This is the piece that hasn't — and it's the largest cost driver.
 Tone: Strategic, transformation. "Operating system" and "infrastructure" are fine. NOT "AI platform" or "tech solution."
@@ -90,6 +90,21 @@ What they own: End-to-end claims flow across states/zones. Litigation is the bla
 What matters to them: Seeing every case across every hub in their region. Comparing advocate performance (attendance, outcomes, adjournments). Getting alerts on deadline risks before they become penalties. Drill-down from regional summary to individual case.
 Frame: Nyayanidhi completes the lifecycle. Litigation stops being a black box. Regional roll-up with drill-down, advocate scorecards, exception-based alerts. They manage by data, not by escalation.
 Tone: Operational, process. Visibility, SLAs, hub performance.
+
+K) GENERAL C-SUITE / TOP MANAGEMENT (CTO, CHRO, COO, Chief - UW/Claims/Reinsurance, or any C-suite NOT directly in motor TP/legal/claims)
+What they own: They run the company. Motor TP litigation — 15-20 lakh pending MACT cases — is one of the largest cost centers in any general insurer. Even if their personal function is technology, HR, or operations, motor TP litigation cost and efficiency directly affects the P&L they are accountable for.
+What matters to them: A comprehensive view of what Nyayanidhi does across the entire litigation function. They need to understand the full scope — not just one angle.
+Frame: Present Nyayanidhi as the litigation operating system that handles the full MACT lifecycle end-to-end:
+  • Claims intake — case digested and defense strategy drafted in seconds
+  • Advocate network — vetted advocates assigned through the system, performance tracked
+  • Full lifecycle management — petition → hearings → orders → award → deposit → execution → closure, with complete visibility across every tribunal
+  • Granular case research — inconsistencies flagged across documents, medical records, and evidence; defensible strategies built in seconds
+  • Fraud detection — document-level analysis surfaces potential fraud to investigation teams immediately
+  • Legal document generation — written arguments, cross-examination prep, settlement memos drafted with full case context
+  • Deadline enforcement — system-enforced compliance including 30-day Section 166 deposit windows
+  • Pre-claim intelligence — up to 3 months early warning before the insurer is even served
+This is not software the insurer needs to operate. Insurers can run their entire MACT litigation through Nyayanidhi's infrastructure — absorbing volume, enforcing discipline, and delivering outcomes.
+Tone: Executive, comprehensive. Paint the full picture. Show the scale of the problem (15-20 lakh cases, 700+ tribunals) and how Nyayanidhi structurally solves it. Keep it high-level but concrete — outcomes, not features.
 
 STEP 3 — PERSONALISE WITH RESEARCH
 Find 2-3 specific facts relevant to THIS person's role from research:
@@ -110,7 +125,7 @@ OPENING: Most important line. Reference a specific research insight — a struct
 
 BODY (3-5 sentences): Connect research insight to their specific responsibilities. Name the problem they live with. Show how Nyayanidhi fits into their workflow — describe operational outcomes, not features. What changes in their day-to-day? What becomes visible that was invisible? What gets done in seconds that took weeks?
 
-CTA: One sentence, 15-minute call, easy yes.${hasDeck ? " Reference attached deck in a short clause before CTA." : ""}
+CTA: Use this EXACT CTA (adjust slightly for natural flow): "We would love to set up a 15-minute call at your convenience to show you how we can operationalise your claims litigation and help you pay lesser."${hasDeck ? " Reference attached deck in a short clause before the CTA." : ""}
 
 Sign-off:
 Ujwal Uthappa

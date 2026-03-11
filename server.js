@@ -62,19 +62,22 @@ app.get("/api/contacts", async (req, res) => {
     const contacts = contactData.data || [];
 
     // Fetch accounts to get category field
-    const acctRes = await fetch(`${domain}/crm/v2/Accounts?per_page=200&fields=id,Account_Name,Category`, {
+    const acctRes = await fetch(`${domain}/crm/v7/Accounts?per_page=200&fields=id,Account_Name,Category,Dossier,Deck`, {
       headers: { Authorization: `Zoho-oauthtoken ${token}` },
     });
     let acctMap = {};
     if (acctRes.ok) {
       const acctData = await acctRes.json();
-      (acctData.data || []).forEach(a => { acctMap[a.id] = a.Category || ""; });
+      (acctData.data || []).forEach(a => {
+        acctMap[a.id] = { category: a.Category || "", dossier: a.Dossier || null, deck: a.Deck || null };
+      });
     }
 
-    // Merge category into contacts
+    // Merge category and dossier into contacts
     const enriched = contacts.map(c => {
       const acctId = typeof c.Account_Name === "object" ? c.Account_Name?.id : null;
-      return { ...c, _category: acctId ? (acctMap[acctId] || "") : "" };
+      const acct = acctId ? acctMap[acctId] : null;
+      return { ...c, _category: acct?.category || "", _dossier: acct?.dossier || null, _deck: acct?.deck || null };
     });
 
     res.json({ contacts: enriched });
@@ -247,6 +250,89 @@ app.post("/api/crm-account-dossier", async (req, res) => {
     res.json({ verified: !!dossierValue, data: updateData });
   } catch (err) {
     console.error("Account dossier upload error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: delete existing deck file from an Account using _delete flag
+async function clearDeck(domain, token, accountId) {
+  const getRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}?fields=Deck`, {
+    method: "GET",
+    headers: { Authorization: `Zoho-oauthtoken ${token}` },
+  });
+  const getData = await getRes.json();
+  const existing = getData?.data?.[0]?.Deck;
+  if (existing && existing.length > 0) {
+    const deletePayload = existing.map(f => ({ id: f.id, _delete: null }));
+    const delRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}`, {
+      method: "PUT",
+      headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [{ Deck: deletePayload }] }),
+    });
+    const delData = await delRes.json();
+    console.log("Deck deleted for account:", accountId, JSON.stringify(delData));
+    return delData;
+  }
+  console.log("No existing deck to clear for:", accountId);
+  return { status: "no_file" };
+}
+
+// ── Zoho CRM: Upload deck file to Account ────────────────────────────────
+app.post("/api/crm-account-deck", async (req, res) => {
+  const { accountId, fileName, fileContent } = req.body;
+  if (!accountId) return res.status(400).json({ error: "accountId required" });
+  try {
+    const token = await getAccessToken();
+    const domain = process.env.ZOHO_API_DOMAIN || "https://www.zohoapis.in";
+
+    if (!fileContent) {
+      await clearDeck(domain, token, accountId);
+      return res.json({ status: "cleared" });
+    }
+
+    const base64Data = fileContent.includes(",") ? fileContent.split(",")[1] : fileContent;
+    const buffer = Buffer.from(base64Data, "base64");
+    const ext = fileName.split(".").pop().toLowerCase();
+    const mimeMap = { pdf:"application/pdf", ppt:"application/vnd.ms-powerpoint", pptx:"application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+    const mime = mimeMap[ext] || "application/octet-stream";
+
+    // Step 1: Clear existing deck first (field only allows 1 file)
+    await clearDeck(domain, token, accountId);
+
+    // Step 2: Upload file to Zoho File System
+    const formData = new FormData();
+    formData.append("file", new Blob([buffer], { type: mime }), fileName);
+    const fileUploadRes = await fetch(`${domain}/crm/v2/files`, {
+      method: "POST",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+      body: formData,
+    });
+    const fileUploadData = await fileUploadRes.json();
+    console.log("Deck upload to ZFS:", JSON.stringify(fileUploadData));
+
+    const fileId = fileUploadData?.data?.[0]?.details?.id;
+    if (!fileId) return res.status(500).json({ error: "File upload failed", details: fileUploadData });
+
+    // Step 3: Link file to Deck field using v7 API
+    const updateRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}`, {
+      method: "PUT",
+      headers: { Authorization: `Zoho-oauthtoken ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [{ Deck: [{ File_Id__s: fileId }] }] }),
+    });
+    const updateData = await updateRes.json();
+    console.log("Deck v7 record update:", JSON.stringify(updateData));
+
+    // Step 4: Verify
+    const verifyRes = await fetch(`${domain}/crm/v7/Accounts/${accountId}?fields=Deck`, {
+      method: "GET",
+      headers: { Authorization: `Zoho-oauthtoken ${token}` },
+    });
+    const verifyData = await verifyRes.json();
+    const deckValue = verifyData?.data?.[0]?.Deck;
+    console.log("Verification - Deck:", JSON.stringify(deckValue));
+    res.json({ verified: !!deckValue, data: updateData });
+  } catch (err) {
+    console.error("Account deck upload error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });

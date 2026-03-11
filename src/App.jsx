@@ -47,6 +47,8 @@ async function apiLoadContacts() {
     crmSyncStatus: c.Outreach_Status ? "synced" : null,
     generatedEmail: c.Outreach_Subject ? { subject: c.Outreach_Subject, body: c.Outreach_Body || "" } : null,
     skipReason: c.Outreach_Skip_Status || null,
+    _dossier: c._dossier || null,
+    _deck: c._deck || null,
     syncLog: [],
   }));
 }
@@ -157,6 +159,21 @@ export default function App() {
         loaded = loaded.map(c => saved[c.id] ? { ...c, ...saved[c.id] } : c);
       } catch {}
       setAllContacts(loaded);
+      // Populate dossiers and decks from CRM data
+      const dossiers = {};
+      const decks = {};
+      loaded.forEach(c => {
+        if (c._dossier && c._dossier.length > 0 && c.company && !dossiers[c.company]) {
+          const d = c._dossier[0];
+          dossiers[c.company] = { name: d.File_Name__s || "dossier", size: d.Size__s || 0, type: "", content: "", fromCRM: true };
+        }
+        if (c._deck && c._deck.length > 0 && c.company && !decks[c.company]) {
+          const d = c._deck[0];
+          decks[c.company] = { name: d.File_Name__s || "deck", size: d.Size__s || 0, type: "", fromCRM: true };
+        }
+      });
+      if (Object.keys(dossiers).length > 0) setCompanyDossiers(prev => ({ ...dossiers, ...prev }));
+      if (Object.keys(decks).length > 0) setCompanyDecks(prev => ({ ...decks, ...prev }));
       // Select first contact in the active category
       const catContacts = loaded.filter(c => c.category === activeCategory);
       if (catContacts.length > 0) {
@@ -214,10 +231,50 @@ export default function App() {
     if (!file) return;
     if (!file.name.match(/\.(pdf|ppt|pptx)$/i)) { showToast("Only PDF, PPT, PPTX supported.", "error"); return; }
     if (file.size > 25*1024*1024) { showToast("Max 25 MB.", "error"); return; }
-    setCompanyDecks(p => ({...p, [company]:{ name:file.name, size:file.size, type:file.type, file, uploadedAt:new Date().toLocaleTimeString() }}));
-    showToast(`Deck attached for ${company.split(" ")[0]}`);
+    const b64Reader = new FileReader();
+    b64Reader.onload = async () => {
+      const accountId = getAccountIdForCompany(company);
+      if (accountId) {
+        showToast(`Uploading deck to CRM for ${company.split(" ")[0]}...`);
+        try {
+          const r = await fetch("http://localhost:3001/api/crm-account-deck", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId, fileName: file.name, fileContent: b64Reader.result }),
+          });
+          const data = await r.json();
+          console.log("CRM deck response:", data);
+          if (data?.verified === false) {
+            setCompanyDecks(p => ({...p, [company]:{ name:file.name, size:file.size, type:file.type, file }}));
+            showToast("Deck attached locally but CRM field not updated — check console", "error");
+            return;
+          }
+          if (data?.error) { showToast("Deck failed to upload to CRM", "error"); return; }
+          setCompanyDecks(p => ({...p, [company]:{ name:file.name, size:file.size, type:file.type, file }}));
+          showToast(`Deck uploaded to CRM for ${company.split(" ")[0]}`, "success");
+        } catch (err) {
+          console.error("CRM deck upload error:", err);
+          showToast("Failed to upload deck to CRM", "error");
+        }
+      } else {
+        setCompanyDecks(p => ({...p, [company]:{ name:file.name, size:file.size, type:file.type, file }}));
+        showToast(`Deck attached locally for ${company.split(" ")[0]} (no CRM account linked)`, "error");
+      }
+    };
+    b64Reader.readAsDataURL(file);
   };
-  const removeDeck = (company) => { setCompanyDecks(p=>{const n={...p};delete n[company];return n;}); showToast("Deck removed."); };
+  const removeDeck = async (company) => {
+    setCompanyDecks(p => { const n = {...p}; delete n[company]; return n; });
+    const accountId = getAccountIdForCompany(company);
+    if (accountId) {
+      try {
+        await fetch("http://localhost:3001/api/crm-account-deck", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId, fileContent: null }),
+        });
+        showToast("Deck removed from CRM", "success");
+      } catch (err) { showToast("Deck removed locally, CRM clear failed", "error"); }
+    } else { showToast("Deck removed."); }
+  };
   const deckColor  = (t) => t?.includes("pdf")?"#C45A5A":t?.includes("presentation")||t?.includes("powerpoint")?"#C4A35A":"#5B9BD5";
 
   // ── Dossier ────────────────────────────────────────────────────────────────
